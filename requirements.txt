@@ -1,0 +1,7 @@
+torch
+pandas
+numpy
+nltk
+jupyter
+tqdm
+reportlab
