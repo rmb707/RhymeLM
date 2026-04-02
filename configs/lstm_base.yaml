@@ -1,0 +1,42 @@
+data:
+  csv_path: lyrics_raw.csv
+  lyrics_column: artist_verses
+  min_bars: 8
+  max_bars: 16
+  dict_ratio: 0.25
+  dict_words_per_block: 50
+  val_split: 0.1
+
+model:
+  arch: lstm
+  embed_dim: 256
+  hidden_dim: 512
+  num_layers: 2
+  dropout: 0.2
+
+training:
+  batch_size: 64
+  block_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.01
+  num_steps: 50000
+  warmup_steps: 2500
+  eval_interval: 1000
+  sample_interval: 5000
+  checkpoint_interval: 10000
+  grad_clip: 1.0
+  grad_accum_steps: 1
+  use_amp: true
+  label_smoothing: 0.0
+  seed: 42
+
+generation:
+  temperature: 0.8
+  top_k: 0
+  top_p: 0.0
+  repetition_penalty: 1.0
+  num_bars: 16
+  max_chars: 2000
+
+checkpoint_dir: checkpoints
+experiment_name: rhymelm_lstm

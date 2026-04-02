@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rhymelm"
+version = "2.0.0"
+description = "Character-level language model for generating 16-bar rap verses"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "pandas",
+    "numpy",
+    "nltk",
+    "tqdm",
+    "matplotlib",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+viz = ["umap-learn", "scikit-learn"]
+dev = ["jupyter", "ipywidgets"]
+
+[project.scripts]
+rhymelm-train = "rhymelm.cli.train:main"
+rhymelm-generate = "rhymelm.cli.generate:main"
+
+[tool.setuptools.packages.find]
+include = ["rhymelm*"]
