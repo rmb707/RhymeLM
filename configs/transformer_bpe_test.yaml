@@ -1,0 +1,49 @@
+# Mid-size transformer for CPU training — quality sweet spot
+data:
+  csv_path: lyrics_cleaned.csv
+  lyrics_column: lyrics_clean
+  min_bars: 8
+  max_bars: 16
+  dict_ratio: 0.15
+  dict_words_per_block: 50
+  val_split: 0.1
+  tokenizer_type: bpe
+  target_bpe_vocab: 2000
+
+model:
+  arch: transformer
+  embed_dim: 256
+  hidden_dim: 256
+  num_layers: 4
+  dropout: 0.15
+  n_heads: 8
+  d_ff: 1024
+  max_seq_len: 512
+  num_artists: 0
+
+training:
+  batch_size: 32
+  block_size: 512
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  num_steps: 5000
+  warmup_steps: 500
+  eval_interval: 500
+  sample_interval: 2500
+  checkpoint_interval: 5000
+  grad_clip: 1.0
+  grad_accum_steps: 2
+  use_amp: false
+  label_smoothing: 0.1
+  seed: 42
+
+generation:
+  temperature: 0.8
+  top_k: 0
+  top_p: 0.95
+  repetition_penalty: 1.1
+  num_bars: 16
+  max_chars: 3000
+
+checkpoint_dir: checkpoints
+experiment_name: rhymelm_transformer_bpe
