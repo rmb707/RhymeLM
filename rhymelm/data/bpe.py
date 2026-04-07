@@ -136,8 +136,24 @@ class BPETokenizer:
 
         return all_ids
 
-    def decode(self, ids: list[int]) -> str:
+    # Interface parity with CharTokenizer
+    @property
+    def stoi(self) -> dict[str, int]:
+        return self.vocab
+
+    @property
+    def itos(self) -> dict[int, str]:
+        return self.inverse_vocab
+
+    def decode(self, ids) -> str:
+        if hasattr(ids, "tolist"):
+            ids = ids.tolist()
         return "".join(self.inverse_vocab.get(i, "?") for i in ids)
+
+    def encode_to_tensor(self, text: str):
+        """Encode text and return a torch.LongTensor."""
+        import torch
+        return torch.tensor(self.encode(text), dtype=torch.long)
 
     def save(self, path: str):
         with open(path, "w") as f:

@@ -15,6 +15,8 @@ class DataConfig:
     dict_ratio: float = 0.25
     dict_words_per_block: int = 50
     val_split: float = 0.1
+    tokenizer_type: str = "char"
+    target_bpe_vocab: int = 2000
 
 
 @dataclass
@@ -24,6 +26,11 @@ class ModelConfig:
     hidden_dim: int = 512
     num_layers: int = 2
     dropout: float = 0.2
+    # Transformer-specific
+    n_heads: int = 8
+    d_ff: int = 1024
+    max_seq_len: int = 512
+    num_artists: int = 0
 
 
 @dataclass
@@ -55,11 +62,24 @@ class GenerationConfig:
 
 
 @dataclass
+class FinetuneConfig:
+    base_checkpoint: str = ""
+    learning_rate: float = 3e-5
+    num_steps: int = 2000
+    mix_ratio: float = 0.8
+    use_lora: bool = True
+    lora_rank: int = 8
+    early_stopping_patience: int = 3
+    eval_interval: int = 200
+
+
+@dataclass
 class Config:
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
+    finetune: FinetuneConfig = field(default_factory=FinetuneConfig)
     checkpoint_dir: str = "checkpoints"
     experiment_name: str = "rhymelm"
 
@@ -76,6 +96,7 @@ class Config:
             model=ModelConfig(**raw.get("model", {})),
             training=TrainingConfig(**raw.get("training", {})),
             generation=GenerationConfig(**raw.get("generation", {})),
+            finetune=FinetuneConfig(**raw.get("finetune", {})),
             checkpoint_dir=raw.get("checkpoint_dir", "checkpoints"),
             experiment_name=raw.get("experiment_name", "rhymelm"),
         )

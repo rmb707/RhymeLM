@@ -33,6 +33,64 @@ def load_lyrics(csv_path: str, lyrics_column: str = "artist_verses") -> list[str
     return texts
 
 
+def build_artist_vocab(csv_path: str) -> dict[str, int]:
+    """Map artist names to integer IDs. ID 0 is reserved for 'generic/no artist'."""
+    df = pd.read_csv(csv_path)
+    artists = sorted(df["artist"].dropna().unique())
+    vocab = {name: i + 1 for i, name in enumerate(artists)}
+    print(f"Artist vocab: {len(vocab)} artists")
+    return vocab
+
+
+def load_lyrics_with_artists(
+    csv_path: str, lyrics_column: str = "artist_verses",
+) -> list[tuple[str, str]]:
+    """Load lyrics as (text, artist) pairs."""
+    df = pd.read_csv(csv_path)
+    pairs = []
+    for _, row in df.iterrows():
+        text = row.get(lyrics_column, "")
+        artist = row.get("artist", "unknown")
+        if isinstance(text, str) and len(text) > 50:
+            pairs.append((text, artist))
+    print(f"Loaded {len(pairs):,} tracks with artist labels")
+    return pairs
+
+
+def extract_verses_with_artists(
+    pairs: list[tuple[str, str]], min_bars: int = 8, max_bars: int = 16,
+) -> list[tuple[str, str]]:
+    """Split lyrics into verse chunks, preserving artist labels."""
+    noise_patterns = ["See ", "tickets as low as", "You might also like"]
+    verses = []
+    for text, artist in pairs:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        lines = [ln for ln in lines if not any(pat in ln for pat in noise_patterns)]
+        for i in range(0, len(lines), max_bars):
+            chunk = lines[i : i + max_bars]
+            if len(chunk) >= min_bars:
+                verses.append(("\n".join(chunk), artist))
+    print(f"Extracted {len(verses):,} verse chunks with artist labels")
+    return verses
+
+
+def clean_user_lyrics(text: str) -> str:
+    """Clean user-uploaded lyrics using the same pipeline as training data."""
+    import re
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r"^\[.*\]$", line):
+            continue
+        if len(line) < 3 and not line[0].isalpha():
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
+
 def extract_verses(
     texts: list[str], min_bars: int = 8, max_bars: int = 16
 ) -> list[str]:

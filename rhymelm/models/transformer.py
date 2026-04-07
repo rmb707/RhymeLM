@@ -194,6 +194,9 @@ class RhymeLMTransformer(RhymeLMBase):
         dropout: float = 0.1,
         max_seq_len: int = 512,
         pos_encoding: str = "learned",
+        num_artists: int = 0,
+        num_rhyme_classes: int = 0,
+        num_syllable_classes: int = 0,
     ):
         super().__init__()
         self.vocab_size = vocab_size
@@ -209,6 +212,13 @@ class RhymeLMTransformer(RhymeLMBase):
             self.pos_embed = nn.Embedding(max_seq_len, d_model)
 
         self.pos_encoding_type = pos_encoding
+
+        # Artist conditioning: learned embedding added to token embeddings.
+        # Acts as a persistent style bias throughout the entire sequence.
+        self.num_artists = num_artists
+        if num_artists > 0:
+            self.artist_embed = nn.Embedding(num_artists + 1, d_model)  # 0 = generic/no artist
+
         self.drop = nn.Dropout(dropout)
 
         self.blocks = nn.ModuleList([
@@ -222,6 +232,12 @@ class RhymeLMTransformer(RhymeLMBase):
         # Weight tying: share token embedding with output projection
         self.head.weight = self.token_embed.weight
 
+        # Auxiliary heads for rhyme/syllable prediction during training.
+        # These force the model to internalize rhyme and meter rather than
+        # relying on inference-time hacks.
+        self.rhyme_head = nn.Linear(d_model, num_rhyme_classes) if num_rhyme_classes > 0 else None
+        self.syllable_head = nn.Linear(d_model, num_syllable_classes) if num_syllable_classes > 0 else None
+
         self._init_weights()
 
     def _init_weights(self):
@@ -231,7 +247,7 @@ class RhymeLMTransformer(RhymeLMBase):
             elif "bias" in name:
                 nn.init.zeros_(param)
 
-    def forward(self, x: torch.Tensor, kv_caches: list[dict] | None = None, offset: int = 0):
+    def forward(self, x: torch.Tensor, kv_caches: list[dict] | None = None, offset: int = 0, artist_ids: torch.Tensor | None = None):
         B, T = x.shape
         tok_emb = self.token_embed(x)
 
@@ -240,6 +256,11 @@ class RhymeLMTransformer(RhymeLMBase):
         else:
             positions = torch.arange(offset, offset + T, device=x.device)
             x_emb = tok_emb + self.pos_embed(positions)
+
+        # Artist conditioning: add a persistent style vector to every position
+        if artist_ids is not None and self.num_artists > 0:
+            art_emb = self.artist_embed(artist_ids)  # (B, d_model)
+            x_emb = x_emb + art_emb.unsqueeze(1)  # broadcast over T
 
         x_emb = self.drop(x_emb)
 

@@ -1,0 +1,48 @@
+data:
+  csv_path: lyrics_cleaned.csv
+  lyrics_column: lyrics_clean
+  min_bars: 8
+  max_bars: 16
+  dict_ratio: 0.15
+  dict_words_per_block: 50
+  val_split: 0.1
+  tokenizer_type: bpe
+  target_bpe_vocab: 2000
+
+model:
+  arch: transformer
+  embed_dim: 512
+  hidden_dim: 512    # unused for transformer
+  num_layers: 6
+  dropout: 0.15
+  n_heads: 8
+  d_ff: 2048
+  max_seq_len: 1024
+  num_artists: 11    # will be overridden from CSV
+
+training:
+  batch_size: 16
+  block_size: 1024
+  learning_rate: 0.0003
+  weight_decay: 0.01
+  num_steps: 30000
+  warmup_steps: 3000
+  eval_interval: 1000
+  sample_interval: 5000
+  checkpoint_interval: 10000
+  grad_clip: 1.0
+  grad_accum_steps: 4
+  use_amp: false
+  label_smoothing: 0.1
+  seed: 42
+
+generation:
+  temperature: 0.8
+  top_k: 0
+  top_p: 0.95
+  repetition_penalty: 1.1
+  num_bars: 16
+  max_chars: 3000
+
+checkpoint_dir: checkpoints
+experiment_name: rhymelm_transformer_bpe

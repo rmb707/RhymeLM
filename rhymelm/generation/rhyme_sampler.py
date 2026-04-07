@@ -68,6 +68,7 @@ def generate_rhyming_verse(
     repetition_penalty: float = 1.1,
     rhyme_scheme: str = "AABB",
     rhyme_boost: float = 3.0,
+    originality_filter=None,
 ) -> str:
     """Generate a verse with rhyme scheme constraints.
 
@@ -98,6 +99,13 @@ def generate_rhyming_verse(
         logits = logits[:, -1, :]
 
         logits = apply_repetition_penalty(logits, generated_ids, repetition_penalty)
+
+        # Block verbatim reproduction of training data
+        if originality_filter is not None:
+            from rhymelm.generation.originality import apply_originality_penalty
+            logits = apply_originality_penalty(
+                logits, "".join(generated), originality_filter, tokenizer,
+            )
 
         # Rhyme boosting near line endings
         if bar_count < len(groups):

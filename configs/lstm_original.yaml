@@ -1,0 +1,43 @@
+# LSTM config tuned for originality — higher regularization to prevent memorization
+data:
+  csv_path: lyrics_cleaned.csv
+  lyrics_column: lyrics_clean
+  min_bars: 8
+  max_bars: 16
+  dict_ratio: 0.20
+  dict_words_per_block: 50
+  val_split: 0.1
+
+model:
+  arch: lstm
+  embed_dim: 256
+  hidden_dim: 512
+  num_layers: 2
+  dropout: 0.35  # higher dropout: forces generalization over memorization
+
+training:
+  batch_size: 64
+  block_size: 128
+  learning_rate: 0.001
+  weight_decay: 0.05  # stronger weight decay
+  num_steps: 15000
+  warmup_steps: 1500
+  eval_interval: 1000
+  sample_interval: 3000
+  checkpoint_interval: 5000
+  grad_clip: 1.0
+  grad_accum_steps: 1
+  use_amp: true
+  label_smoothing: 0.1  # smooth targets: discourages overconfident memorization
+  seed: 42
+
+generation:
+  temperature: 0.8
+  top_k: 0
+  top_p: 0.95
+  repetition_penalty: 1.15
+  num_bars: 16
+  max_chars: 2000
+
+checkpoint_dir: checkpoints
+experiment_name: rhymelm_original

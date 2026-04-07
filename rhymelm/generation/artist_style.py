@@ -67,6 +67,7 @@ def generate_artist_verse(
     top_p: float = 0.95,
     repetition_penalty: float = 1.1,
     rhyme_scheme: str | None = None,
+    originality_filter=None,
 ) -> str:
     """Generate a verse in the style of a specific artist.
 
@@ -89,6 +90,7 @@ def generate_artist_verse(
             temperature=temperature, top_p=top_p,
             repetition_penalty=repetition_penalty,
             rhyme_scheme=rhyme_scheme,
+            originality_filter=originality_filter,
         )
     else:
         return generate_verse(
@@ -96,6 +98,7 @@ def generate_artist_verse(
             prompt=prompt, num_bars=num_bars,
             temperature=temperature, top_p=top_p,
             repetition_penalty=repetition_penalty,
+            originality_filter=originality_filter,
         )
 
 

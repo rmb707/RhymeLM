@@ -114,6 +114,41 @@ def build_rhyme_groups(cmu: dict | None = None) -> dict[str, list[str]]:
     return groups
 
 
+def build_rhyme_suffix_vocab(cmu: dict | None = None) -> dict[str, int]:
+    """Map each unique rhyme suffix to an integer ID for classification.
+
+    Used as labels for the rhyme auxiliary loss during training.
+    """
+    if cmu is None:
+        cmu = get_cmu_dict()
+    suffixes = set()
+    for word in cmu:
+        s = get_rhyme_suffix(word, cmu)
+        if s:
+            suffixes.add(s)
+    vocab = {s: i + 1 for i, s in enumerate(sorted(suffixes))}
+    vocab["<NONE>"] = 0
+    return vocab
+
+
+def get_line_syllable_bucket(line: str, cmu: dict | None = None) -> int:
+    """Bucket a line's syllable count for classification.
+
+    Buckets: 0=0-6, 1=7-9, 2=10-12, 3=13-15, 4=16+
+    """
+    count = line_syllable_count(line, cmu)
+    if count <= 6:
+        return 0
+    elif count <= 9:
+        return 1
+    elif count <= 12:
+        return 2
+    elif count <= 15:
+        return 3
+    else:
+        return 4
+
+
 class RhymeTrie:
     """Character-level trie of CMU dict words for constrained generation.
 

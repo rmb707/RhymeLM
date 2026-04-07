@@ -62,20 +62,28 @@ def save_checkpoint(
     model: RhymeLMBase,
     optimizer,
     scheduler,
-    tokenizer: CharTokenizer,
+    tokenizer,
     config: Config,
     step: int,
     path: str,
 ):
     """Save model checkpoint with all state needed to resume."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Store tokenizer data based on type
+    if hasattr(tokenizer, "merges"):  # BPE
+        tok_data = {"type": "bpe", "merges": tokenizer.merges, "vocab": tokenizer.vocab}
+    else:  # Char
+        tok_data = {"type": "char", "chars": tokenizer.chars}
+
     torch.save(
         {
             "step": step,
             "model_state": model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "scheduler_state": scheduler.state_dict(),
-            "tokenizer_chars": tokenizer.chars,
+            "tokenizer_data": tok_data,
+            "tokenizer_chars": getattr(tokenizer, "chars", []),  # backward compat
             "config": {
                 "model": vars(config.model),
                 "training": vars(config.training),
