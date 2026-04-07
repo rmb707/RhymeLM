@@ -140,19 +140,24 @@ def generate_tab(prompt, artist, rhyme_scheme, temperature, top_p, rep_penalty, 
 
     of = ORIG_FILTER if use_orig else None
 
+    # Default to AABB when artist is selected and scheme is free
+    effective_scheme = rhyme_scheme
+    if artist and artist != "None" and rhyme_scheme == "free":
+        effective_scheme = "AABB"
+
     if artist and artist != "None":
         verse = generate_artist_verse(
             MODEL, TOKENIZER, DEVICE, STARTERS, artist=artist,
             num_bars=int(bars), temperature=temperature, top_p=top_p,
             repetition_penalty=rep_penalty,
-            rhyme_scheme=rhyme_scheme if rhyme_scheme != "free" else None,
+            rhyme_scheme=effective_scheme if effective_scheme != "free" else None,
             originality_filter=of,
         )
-    elif rhyme_scheme and rhyme_scheme != "free":
+    elif effective_scheme and effective_scheme != "free":
         verse = generate_rhyming_verse(
             MODEL, TOKENIZER, DEVICE, prompt=prompt or " ",
             num_bars=int(bars), temperature=temperature, top_p=top_p,
-            repetition_penalty=rep_penalty, rhyme_scheme=rhyme_scheme,
+            repetition_penalty=rep_penalty, rhyme_scheme=effective_scheme,
             originality_filter=of,
         )
     else:
