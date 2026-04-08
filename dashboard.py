@@ -111,7 +111,7 @@ with gr.Blocks(
             gen_btn = gr.Button("Generate", variant="primary", size="lg")
 
         with gr.Column(scale=2):
-            verse_out = gr.Textbox(label="Verse", lines=18, show_copy_button=True)
+            verse_out = gr.Textbox(label="Verse", lines=18)
             info_out = gr.Markdown()
 
     gen_btn.click(generate_and_format, [artist, style, bars, topic], [verse_out, info_out])
