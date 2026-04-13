@@ -1,11 +1,7 @@
-"""
-Web-based lyrics scraper for RhymeLM.
+"""Aggressive multi-source lyrics scraper. No API keys needed.
 
-Scrapes lyrics from free web sources (no API keys needed):
-  1. www.lyrics.com
-  2. www.songlyrics.com
-
-Includes rate limiting, caching, error handling, and lyrics cleaning.
+Hits every free lyrics site, caches results, builds a massive corpus.
+Sources: lyrics.com, AZLyrics, songlyrics.com, Genius (direct scrape)
 """
 
 import json
@@ -19,454 +15,327 @@ from urllib.parse import quote, quote_plus
 import requests
 from bs4 import BeautifulSoup
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-CACHE_DIR = Path(__file__).resolve().parent / "lyrics_cache"
+CACHE_DIR = Path("lyrics_cache")
+CACHE_DIR.mkdir(exist_ok=True)
 
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
-REQUEST_TIMEOUT = 15  # seconds
-RATE_LIMIT_DELAY = 2  # seconds between requests
-
-RAP_ARTISTS: list[str] = [
-    "Eminem",
-    "Drake",
-    "Kendrick Lamar",
-    "2Pac",
-    "Nas",
-    "Jay-Z",
-    "Kanye West",
-    "Lil Wayne",
-    "J. Cole",
-    "Nicki Minaj",
-    "Future",
-    "Travis Scott",
-    "21 Savage",
-    "Megan Thee Stallion",
-    "Tyler the Creator",
-    "A$AP Rocky",
-    "Pusha T",
-    "Freddie Gibbs",
-    "JID",
-    "Denzel Curry",
-    "Joey Bada$$",
-    "Logic",
-    "Mac Miller",
-    "Kid Cudi",
-    "Childish Gambino",
-    "Run the Jewels",
-    "MF DOOM",
-    "Rakim",
-    "Biggie",
-    "Wu-Tang Clan",
+RAP_ARTISTS = [
+    "Eminem", "Drake", "Kendrick Lamar", "2Pac", "Nas",
+    "Jay-Z", "Kanye West", "Lil Wayne", "J. Cole", "Nicki Minaj",
+    "Future", "Travis Scott", "21 Savage", "Tyler the Creator",
+    "A$AP Rocky", "Pusha T", "Freddie Gibbs", "JID", "Denzel Curry",
+    "Joey Badass", "Logic", "Mac Miller", "Kid Cudi", "Childish Gambino",
+    "MF DOOM", "Rakim", "Notorious B.I.G.", "Ice Cube", "Snoop Dogg", "50 Cent",
 ]
 
+DELAY = 1.5
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
-def _get(url: str, **kwargs) -> requests.Response | None:
-    """Issue a GET request with standard headers and error handling."""
+def _get(url, timeout=15):
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT, **kwargs)
-        resp.raise_for_status()
-        return resp
-    except requests.RequestException as exc:
-        logger.debug("Request failed for %s: %s", url, exc)
-        return None
-
-
-def _slugify(text: str) -> str:
-    """Convert text to a URL-friendly slug (lowercase, hyphens)."""
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text)
-    text = re.sub(r"-+", "-", text)
-    return text.strip("-")
-
-
-def clean_lyrics(raw: str) -> str:
-    """Clean raw lyrics text.
-
-    - Remove section headers like [Verse 1], [Chorus], [Bridge], etc.
-    - Remove ad-related lines and junk.
-    - Collapse excessive blank lines.
-    - Strip leading/trailing whitespace.
-    """
-    if not raw:
-        return ""
-
-    lines = raw.splitlines()
-    cleaned: list[str] = []
-
-    # Patterns to remove
-    section_header = re.compile(r"^\[.*?\]\s*$")
-    ad_patterns = re.compile(
-        r"(commercial|advertisement|ringtone|lyrics licensed|"
-        r"lyrics provided|lyrics powered|songlyrics\.com|"
-        r"lyrics\.com|all rights reserved|copyright|"
-        r"embed|share|print|correct|submit)",
-        re.IGNORECASE,
-    )
-
-    for line in lines:
-        stripped = line.strip()
-        # Skip section headers
-        if section_header.match(stripped):
-            continue
-        # Skip ad / boilerplate lines
-        if stripped and ad_patterns.search(stripped):
-            continue
-        cleaned.append(stripped)
-
-    text = "\n".join(cleaned)
-    # Collapse 3+ consecutive newlines into 2
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
-
-
-# ---------------------------------------------------------------------------
-# Source 1: lyrics.com
-# ---------------------------------------------------------------------------
-
-def _lyrics_com_search(artist_name: str, max_songs: int) -> list[dict]:
-    """Search lyrics.com for songs by an artist and scrape lyrics."""
-    results: list[dict] = []
-    search_url = f"https://www.lyrics.com/artist/{quote(artist_name)}"
-    logger.info("lyrics.com: searching %s", search_url)
-
-    resp = _get(search_url)
-    if resp is None:
-        # Try the search endpoint as fallback
-        search_url = f"https://www.lyrics.com/serp.php?st={quote_plus(artist_name)}&stype=2"
-        logger.info("lyrics.com: fallback search %s", search_url)
-        resp = _get(search_url)
-    if resp is None:
-        return results
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    # Find song links -- they live in <a> tags inside the artist page or search results
-    song_links: list[tuple[str, str]] = []
-
-    # Artist page layout: links in .sec-lyric or .lyric-body or table rows
-    for a_tag in soup.select("a[href*='/lyric/']"):
-        href = a_tag.get("href", "")
-        title = a_tag.get_text(strip=True)
-        if href and title and len(title) > 1:
-            if not href.startswith("http"):
-                href = "https://www.lyrics.com" + href
-            song_links.append((title, href))
-        if len(song_links) >= max_songs:
-            break
-
-    # Also try table-based layout (common for artist discography pages)
-    if not song_links:
-        for a_tag in soup.select("td a[href]"):
-            href = a_tag.get("href", "")
-            title = a_tag.get_text(strip=True)
-            if "/lyric/" in href and title and len(title) > 1:
-                if not href.startswith("http"):
-                    href = "https://www.lyrics.com" + href
-                song_links.append((title, href))
-            if len(song_links) >= max_songs:
-                break
-
-    logger.info("lyrics.com: found %d song links for '%s'", len(song_links), artist_name)
-
-    for title, url in song_links[:max_songs]:
-        if len(results) >= max_songs:
-            break
-        time.sleep(RATE_LIMIT_DELAY)
-        lyrics = _scrape_lyrics_com_page(url)
-        if lyrics and len(lyrics) > 50:
-            results.append({
-                "artist": artist_name,
-                "title": title,
-                "lyrics": lyrics,
-            })
-            logger.info("  + scraped: %s (%d chars)", title, len(lyrics))
-        else:
-            logger.debug("  - skipped (too short/empty): %s", title)
-
-    return results
-
-
-def _scrape_lyrics_com_page(url: str) -> str:
-    """Scrape lyrics from a single lyrics.com lyric page."""
-    resp = _get(url)
-    if resp is None:
-        return ""
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    # The lyrics body is typically in <pre id="lyric-body-text"> or
-    # <div id="lyric-body-text">
-    lyric_div = soup.find(id="lyric-body-text")
-    if lyric_div:
-        raw = lyric_div.get_text(separator="\n")
-        return clean_lyrics(raw)
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Source 2: songlyrics.com
-# ---------------------------------------------------------------------------
-
-def _songlyrics_com_search(artist_name: str, max_songs: int) -> list[dict]:
-    """Search songlyrics.com for songs by an artist and scrape lyrics."""
-    results: list[dict] = []
-    slug = _slugify(artist_name)
-    artist_url = f"https://www.songlyrics.com/{slug}-lyrics/"
-    logger.info("songlyrics.com: trying %s", artist_url)
-
-    resp = _get(artist_url)
-    if resp is None:
-        return results
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    song_links: list[tuple[str, str]] = []
-
-    # Song list is usually in <table class="tracklist"> or similar
-    for a_tag in soup.select("a[href*='songlyrics.com']"):
-        href = a_tag.get("href", "")
-        title = a_tag.get_text(strip=True)
-        # Song pages look like /artist/song-title-lyrics.html
-        if (
-            title
-            and len(title) > 1
-            and href.endswith("-lyrics.html")
-            and slug in href.lower()
-        ):
-            song_links.append((title, href))
-        if len(song_links) >= max_songs:
-            break
-
-    # Deduplicate while preserving order
-    seen: set[str] = set()
-    unique_links: list[tuple[str, str]] = []
-    for title, href in song_links:
-        if href not in seen:
-            seen.add(href)
-            unique_links.append((title, href))
-
-    logger.info("songlyrics.com: found %d song links for '%s'", len(unique_links), artist_name)
-
-    for title, url in unique_links[:max_songs]:
-        if len(results) >= max_songs:
-            break
-        time.sleep(RATE_LIMIT_DELAY)
-        lyrics = _scrape_songlyrics_com_page(url)
-        if lyrics and len(lyrics) > 50:
-            results.append({
-                "artist": artist_name,
-                "title": title,
-                "lyrics": lyrics,
-            })
-            logger.info("  + scraped: %s (%d chars)", title, len(lyrics))
-        else:
-            logger.debug("  - skipped (too short/empty): %s", title)
-
-    return results
-
-
-def _scrape_songlyrics_com_page(url: str) -> str:
-    """Scrape lyrics from a single songlyrics.com page."""
-    resp = _get(url)
-    if resp is None:
-        return ""
-    soup = BeautifulSoup(resp.text, "html.parser")
-
-    lyric_div = soup.find(id="songLyricsDiv")
-    if lyric_div:
-        raw = lyric_div.get_text(separator="\n")
-        # songlyrics.com sometimes puts "We do not have the lyrics for ..."
-        if "do not have the lyrics" in raw.lower():
-            return ""
-        return clean_lyrics(raw)
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Caching
-# ---------------------------------------------------------------------------
-
-def _cache_path(artist_name: str) -> Path:
-    safe = re.sub(r"[^\w\s-]", "_", artist_name).strip()
-    return CACHE_DIR / f"{safe}.json"
-
-
-def _load_cache(artist_name: str) -> list[dict] | None:
-    path = _cache_path(artist_name)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, list) and len(data) > 0:
-                logger.info("Loaded %d cached songs for '%s'", len(data), artist_name)
-                return data
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Cache read failed for '%s': %s", artist_name, exc)
+        r = requests.get(url, headers=HEADERS, timeout=timeout)
+        if r.status_code == 200:
+            return r.text
+    except:
+        pass
     return None
 
 
-def _save_cache(artist_name: str, songs: list[dict]) -> None:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _cache_path(artist_name)
-    try:
-        path.write_text(json.dumps(songs, ensure_ascii=False, indent=2), encoding="utf-8")
-        logger.info("Cached %d songs for '%s' -> %s", len(songs), artist_name, path)
-    except OSError as exc:
-        logger.warning("Cache write failed for '%s': %s", artist_name, exc)
+def _clean(text):
+    lines = text.splitlines()
+    cleaned = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r"^\[.*\]$", line):
+            continue
+        if any(x in line for x in ["Embed", "You might also like", "See ", "Get tickets",
+                                     "Contributors", "Translations", "pyright", "writer"]):
+            continue
+        if re.match(r"^\d+$", line):
+            continue
+        if len(line) < 3:
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned)
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
+def _slug(name):
+    s = name.lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s)
+    s = re.sub(r"[\s]+", "-", s)
+    return s
 
-def scrape_artist_songs(artist_name: str, max_songs: int = 50) -> list[dict]:
-    """Scrape lyrics for an artist from web sources.
 
-    Tries sources in order, falling back if one yields no results.
-    Results are cached to disk.
+def _slug_under(name):
+    s = name.lower().strip()
+    s = re.sub(r"[^\w\s]", "", s)
+    s = re.sub(r"[\s]+", "_", s)
+    return s
 
-    Args:
-        artist_name: Name of the artist to search for.
-        max_songs: Maximum number of songs to collect.
 
-    Returns:
-        List of dicts with keys: ``artist``, ``title``, ``lyrics``.
-    """
-    # Check cache first
-    cached = _load_cache(artist_name)
-    if cached is not None:
-        return cached[:max_songs]
+# ═══════════════════════════════════════
+# SOURCE 1: lyrics.com
+# ═══════════════════════════════════════
+def _scrape_lyricscom(artist, max_songs=50):
+    songs = []
+    # Try multiple URL patterns
+    for url_pattern in [
+        f"https://www.lyrics.com/artist/{quote(artist)}",
+        f"https://www.lyrics.com/artist.php?name={quote_plus(artist)}&aid=0&o=1",
+    ]:
+        html = _get(url_pattern)
+        if not html or "no results" in html.lower():
+            continue
 
-    songs: list[dict] = []
+        soup = BeautifulSoup(html, "html.parser")
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("/lyric/") or href.startswith("https://www.lyrics.com/lyric/"):
+                title = a.get_text(strip=True)
+                if title and len(title) > 1 and not title.isdigit():
+                    full = href if href.startswith("http") else "https://www.lyrics.com" + href
+                    links.append((title, full))
 
-    # Source 1: lyrics.com
-    try:
-        songs = _lyrics_com_search(artist_name, max_songs)
-    except Exception as exc:
-        logger.warning("lyrics.com failed for '%s': %s", artist_name, exc)
+        if links:
+            break
 
-    # Source 2: songlyrics.com (fallback or supplement)
-    if len(songs) < max_songs:
-        remaining = max_songs - len(songs)
-        try:
-            extra = _songlyrics_com_search(artist_name, remaining)
-            # Avoid duplicates by title
-            existing_titles = {s["title"].lower() for s in songs}
-            for song in extra:
-                if song["title"].lower() not in existing_titles:
-                    songs.append(song)
-                    existing_titles.add(song["title"].lower())
-                if len(songs) >= max_songs:
-                    break
-        except Exception as exc:
-            logger.warning("songlyrics.com failed for '%s': %s", artist_name, exc)
+    log.info(f"  lyrics.com: {len(links)} links for '{artist}'")
 
-    # Cache whatever we got (even partial results are useful)
-    if songs:
-        _save_cache(artist_name, songs)
-
-    logger.info("Total songs scraped for '%s': %d", artist_name, len(songs))
+    for title, link in links[:max_songs]:
+        time.sleep(DELAY)
+        page = _get(link)
+        if not page:
+            continue
+        s = BeautifulSoup(page, "html.parser")
+        body = s.find("pre", id="lyric-body-text")
+        if not body:
+            body = s.find("div", class_="lyric-body")
+        if body:
+            text = body.get_text(separator="\n").strip()
+            cleaned = _clean(text)
+            if len(cleaned) > 100:
+                songs.append({"artist": artist, "title": title, "lyrics": cleaned})
+                log.info(f"    + {title} ({len(cleaned)} chars)")
     return songs
 
 
-def build_large_dataset(
-    artists: list[str] | None = None,
-    max_per_artist: int = 50,
-) -> str:
-    """Scrape lyrics for multiple artists and return a combined corpus.
+# ═══════════════════════════════════════
+# SOURCE 2: AZLyrics.com
+# ═══════════════════════════════════════
+def _scrape_azlyrics(artist, max_songs=50):
+    songs = []
+    slug = re.sub(r"[^a-z0-9]", "", artist.lower())
+    if not slug:
+        return songs
+    url = f"https://www.azlyrics.com/{slug[0]}/{slug}.html"
+    html = _get(url)
+    if not html:
+        return songs
 
-    Args:
-        artists: List of artist names. Defaults to ``RAP_ARTISTS``.
-        max_per_artist: Max songs to scrape per artist.
+    soup = BeautifulSoup(html, "html.parser")
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "/lyrics/" in href and href.endswith(".html"):
+            if not href.startswith("http"):
+                href = "https://www.azlyrics.com" + href
+            title = a.get_text(strip=True)
+            if title:
+                links.append((title, href))
 
-    Returns:
-        A single string with all lyrics concatenated, separated by newlines.
-    """
-    if artists is None:
-        artists = RAP_ARTISTS
+    log.info(f"  azlyrics: {len(links)} links for '{artist}'")
 
-    all_lyrics: list[str] = []
-    total_songs = 0
-
-    for i, artist in enumerate(artists, 1):
-        logger.info("=== [%d/%d] Scraping: %s ===", i, len(artists), artist)
-        songs = scrape_artist_songs(artist, max_per_artist)
-        for song in songs:
-            all_lyrics.append(song["lyrics"])
-        total_songs += len(songs)
-        logger.info("Running total: %d songs", total_songs)
-
-    corpus = "\n\n".join(all_lyrics)
-    logger.info(
-        "Dataset complete: %d artists, %d songs, %d characters",
-        len(artists),
-        total_songs,
-        len(corpus),
-    )
-    return corpus
+    for title, link in links[:max_songs]:
+        time.sleep(DELAY + 1)  # AZ is strict
+        page = _get(link)
+        if not page:
+            continue
+        s = BeautifulSoup(page, "html.parser")
+        # Lyrics are in a div with no class/id after the comment "Usage of azlyrics"
+        divs = s.find_all("div", class_=False, id=False)
+        for div in divs:
+            text = div.get_text(separator="\n").strip()
+            if len(text) > 200 and "\n" in text and "azlyrics" not in text.lower()[:100]:
+                cleaned = _clean(text)
+                if len(cleaned) > 100:
+                    songs.append({"artist": artist, "title": title, "lyrics": cleaned})
+                    log.info(f"    + {title} ({len(cleaned)} chars)")
+                    break
+    return songs
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
+# ═══════════════════════════════════════
+# SOURCE 3: songlyrics.com
+# ═══════════════════════════════════════
+def _scrape_songlyrics(artist, max_songs=50):
+    songs = []
+    slug = _slug(artist)
+    # Try multiple URL patterns
+    for url in [
+        f"https://www.songlyrics.com/{slug}-lyrics/",
+        f"https://www.songlyrics.com/{quote_plus(artist.lower())}-lyrics/",
+    ]:
+        html = _get(url)
+        if html and "not found" not in html.lower()[:500]:
+            break
+    else:
+        return songs
+
+    soup = BeautifulSoup(html, "html.parser")
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        title = a.get_text(strip=True)
+        if title and "songlyrics.com" in href and href.endswith("-lyrics/") and slug in href:
+            if href != url:  # not the artist page itself
+                links.append((title, href))
+
+    log.info(f"  songlyrics: {len(links)} links for '{artist}'")
+
+    for title, link in links[:max_songs]:
+        time.sleep(DELAY)
+        page = _get(link)
+        if not page:
+            continue
+        s = BeautifulSoup(page, "html.parser")
+        div = s.find("p", id="songLyricsDiv")
+        if div:
+            text = div.get_text(separator="\n").strip()
+            if "do not have the lyrics" not in text.lower():
+                cleaned = _clean(text)
+                if len(cleaned) > 100:
+                    songs.append({"artist": artist, "title": title, "lyrics": cleaned})
+                    log.info(f"    + {title} ({len(cleaned)} chars)")
+    return songs
+
+
+# ═══════════════════════════════════════
+# SOURCE 4: Genius direct scrape
+# ═══════════════════════════════════════
+def _scrape_genius(artist, max_songs=50):
+    songs = []
+    slug = _slug(artist)
+
+    # Try artist page
+    url = f"https://genius.com/artists/{slug}"
+    html = _get(url)
+    if not html:
+        # Try search
+        url = f"https://genius.com/search?q={quote_plus(artist)}"
+        html = _get(url)
+    if not html:
+        return songs
+
+    soup = BeautifulSoup(html, "html.parser")
+    links = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "genius.com/" in href and "-lyrics" in href:
+            title = a.get_text(strip=True)
+            if title and len(title) > 2:
+                links.append((title, href))
+
+    # Dedupe
+    seen = set()
+    unique = []
+    for t, l in links:
+        if l not in seen:
+            seen.add(l)
+            unique.append((t, l))
+    links = unique
+
+    log.info(f"  genius: {len(links)} links for '{artist}'")
+
+    for title, link in links[:max_songs]:
+        time.sleep(DELAY)
+        page = _get(link)
+        if not page:
+            continue
+        s = BeautifulSoup(page, "html.parser")
+        containers = s.find_all("div", attrs={"data-lyrics-container": "true"})
+        if containers:
+            parts = []
+            for c in containers:
+                for br in c.find_all("br"):
+                    br.replace_with("\n")
+                parts.append(c.get_text(separator="\n"))
+            text = "\n".join(parts)
+            cleaned = _clean(text)
+            if len(cleaned) > 100:
+                songs.append({"artist": artist, "title": title, "lyrics": cleaned})
+                log.info(f"    + {title} ({len(cleaned)} chars)")
+    return songs
+
+
+# ═══════════════════════════════════════
+# MASTER
+# ═══════════════════════════════════════
+def scrape_artist_songs(artist, max_songs=50):
+    cache_file = CACHE_DIR / f"{_slug_under(artist)}.json"
+
+    if cache_file.exists():
+        with open(cache_file) as f:
+            cached = json.load(f)
+        if cached:
+            log.info(f"Cache: {artist} ({len(cached)} songs)")
+            return cached
+
+    log.info(f"\n{'='*40}\nScraping: {artist}\n{'='*40}")
+    all_songs = []
+    seen = set()
+
+    for fn, name in [
+        (_scrape_lyricscom, "lyrics.com"),
+        (_scrape_azlyrics, "azlyrics"),
+        (_scrape_songlyrics, "songlyrics"),
+        (_scrape_genius, "genius"),
+    ]:
+        try:
+            results = fn(artist, max_songs=max_songs)
+            for s in results:
+                key = re.sub(r"[^\w]", "", s["title"].lower())
+                if key not in seen and len(s["lyrics"]) > 100:
+                    seen.add(key)
+                    all_songs.append(s)
+        except Exception as e:
+            log.warning(f"  {name}: {e}")
+
+        if len(all_songs) >= max_songs:
+            break
+
+    log.info(f"TOTAL {artist}: {len(all_songs)} songs")
+
+    with open(cache_file, "w") as f:
+        json.dump(all_songs, f, indent=2)
+
+    return all_songs
+
+
+def scrape_all(artists=None, max_per=50):
+    artists = artists or RAP_ARTISTS
+    all_songs = []
+    for a in artists:
+        songs = scrape_artist_songs(a, max_per)
+        all_songs.extend(songs)
+    log.info(f"\nGRAND TOTAL: {len(all_songs)} songs from {len(artists)} artists")
+    return all_songs
+
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Scrape rap lyrics from the web")
-    parser.add_argument(
-        "--artist",
-        type=str,
-        default=None,
-        help="Scrape a single artist (default: scrape all hardcoded artists)",
-    )
-    parser.add_argument(
-        "--max-songs",
-        type=int,
-        default=50,
-        help="Maximum songs per artist (default: 50)",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=None,
-        help="Write combined corpus to this file",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable debug logging",
-    )
-    args = parser.parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    if args.artist:
-        songs = scrape_artist_songs(args.artist, args.max_songs)
-        print(f"Scraped {len(songs)} songs for {args.artist}")
-        for s in songs:
-            print(f"  - {s['title']} ({len(s['lyrics'])} chars)")
-    else:
-        corpus = build_large_dataset(max_per_artist=args.max_songs)
-        print(f"\nCorpus size: {len(corpus):,} characters")
-        if args.output:
-            Path(args.output).write_text(corpus, encoding="utf-8")
-            print(f"Written to {args.output}")
+    songs = scrape_all(max_per=50)
+    print(f"\n{len(songs)} songs scraped")
+    for a in RAP_ARTISTS:
+        c = sum(1 for s in songs if s["artist"] == a)
+        if c > 0:
+            print(f"  {a}: {c}")
