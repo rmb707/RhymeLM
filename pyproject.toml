@@ -4,24 +4,31 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rhymelm"
-version = "2.0.0"
-description = "Character-level language model for generating 16-bar rap verses"
+version = "3.0.0"
+description = "Retrieval-augmented rap verse generation with FAISS + GPT-2 XL"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.0",
+    "transformers>=4.41",
+    "sentence-transformers",
+    "faiss-cpu",
     "pandas",
     "numpy",
     "nltk",
     "tqdm",
     "matplotlib",
     "pyyaml",
+    "beautifulsoup4",
+    "requests",
+    "gradio>=4.0",
 ]
 
 [project.optional-dependencies]
 viz = ["umap-learn", "scikit-learn"]
 dev = ["jupyter", "ipywidgets"]
+peft = ["peft>=0.10", "accelerate"]
 
 [project.scripts]
 rhymelm-train = "rhymelm.cli.train:main"

@@ -10,3 +10,9 @@ experiments/
 *.png
 .ipynb_checkpoints/
 .env
+rag_index/
+lyrics_cache/
+rhymelm/data/lyrics_cache/
+CLAUDE.md
+/tmp/
+*.log
