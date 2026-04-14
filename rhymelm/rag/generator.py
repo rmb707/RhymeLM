@@ -95,6 +95,11 @@ class RAGGenerator:
         params = sum(p.numel() for p in self._model.parameters())
         print(f"Loaded: {params/1e6:.0f}M params")
 
+    def _truncate_chunk(self, text: str, max_lines: int) -> str:
+        """Trim a verse chunk to its first `max_lines` non-empty lines."""
+        lines = [l for l in text.splitlines() if l.strip()]
+        return "\n".join(lines[:max_lines])
+
     def _build_prompt(
         self,
         topic: str,
@@ -102,12 +107,16 @@ class RAGGenerator:
         retrieved: RetrievalResult,
         profile: dict | None,
         num_examples: int = 3,
+        chunk_line_cap: int | None = None,
     ) -> str:
         """Build a few-shot prompt from retrieved verses + style profile.
 
         The profile injection acts as an instruction the model can follow via
         in-context learning. Style hints stay grounded — they describe what
         the model is about to see in the examples below.
+
+        `chunk_line_cap` truncates each example to that many lines (used by
+        the generator to enforce a context-window budget).
         """
         examples = retrieved.chunks[:num_examples]
 
@@ -137,7 +146,10 @@ class RAGGenerator:
         parts.append(f"Rap verses by {artist}:\n")
         for i, chunk in enumerate(examples, 1):
             parts.append(f"Verse {i}:")
-            parts.append(chunk.text.strip())
+            text = chunk.text.strip()
+            if chunk_line_cap:
+                text = self._truncate_chunk(text, chunk_line_cap)
+            parts.append(text)
             parts.append("")
 
         # Final header — frame the new verse with the topic and scheme reminder
@@ -190,11 +202,48 @@ class RAGGenerator:
                 fetch_k=num_examples * 4,
             )
 
-        prompt = self._build_prompt(topic, artist, retrieved, profile, num_examples)
+        # GPT-2 XL has a 1024-token context window. Reserve room for new tokens
+        # plus a small safety margin and shrink the prompt if it overflows.
+        model_max = getattr(self._model.config, "n_positions", 1024)
+        max_new = num_bars * 20
+        budget = model_max - max_new - 16  # safety margin
 
-        # Generate
-        inputs = self._tokenizer(prompt, return_tensors="pt").to(self.device)
-        input_len = inputs.input_ids.shape[1]
+        chunk_line_cap = None
+        prompt = self._build_prompt(topic, artist, retrieved, profile, num_examples, chunk_line_cap)
+        input_ids = self._tokenizer(prompt, return_tensors="pt").input_ids
+        input_len = input_ids.shape[1]
+
+        # Iteratively shrink: first cap each example to fewer lines, then drop examples
+        cap_iter = [12, 8, 6, 4]
+        cap_idx = 0
+        active_examples = num_examples
+        while input_len > budget:
+            if cap_idx < len(cap_iter):
+                chunk_line_cap = cap_iter[cap_idx]
+                cap_idx += 1
+            elif active_examples > 1:
+                active_examples -= 1
+            else:
+                # Last resort: cut max_new_tokens too
+                max_new = max(max(num_bars * 8, 64), max_new // 2)
+                budget = model_max - max_new - 16
+                if input_len > budget:
+                    # Can't shrink further; truncate prompt from the front
+                    excess = input_len - budget
+                    input_ids = input_ids[:, excess:]
+                    input_len = input_ids.shape[1]
+                    break
+
+            prompt = self._build_prompt(
+                topic, artist, retrieved, profile, active_examples, chunk_line_cap
+            )
+            input_ids = self._tokenizer(prompt, return_tensors="pt").input_ids
+            input_len = input_ids.shape[1]
+
+        inputs = {
+            "input_ids": input_ids.to(self.device),
+            "attention_mask": torch.ones_like(input_ids).to(self.device),
+        }
 
         # Build the rhyme-aware logits processor if we have a target scheme
         logits_processors = None
@@ -224,7 +273,7 @@ class RAGGenerator:
         with torch.no_grad():
             output = self._model.generate(
                 **inputs,
-                max_new_tokens=num_bars * 20,
+                max_new_tokens=max_new,
                 temperature=temperature,
                 top_p=top_p,
                 do_sample=True,
