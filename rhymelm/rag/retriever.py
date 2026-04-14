@@ -46,14 +46,30 @@ class Retriever:
         query: str,
         artist: str | None = None,
         top_k: int = 5,
-        fetch_k: int = 20,
+        fetch_k: int = 30,
+        prefer_scheme: str | None = None,
+        scheme_boost: float = 0.15,
     ) -> RetrievalResult:
-        """Retrieve with MMR-style diversity: avoid near-duplicate chunks."""
-        # Overfetch, then greedily pick diverse ones
+        """Retrieve with MMR-style diversity and optional scheme preference.
+
+        If `prefer_scheme` is given, chunks whose `rhyme_scheme` matches receive
+        a `scheme_boost` additive bonus to their similarity score before re-ranking.
+        This pulls real examples of the target pattern into the in-context set
+        so the LLM has a stylistic anchor to imitate.
+        """
+        # Overfetch with a wider net when re-ranking by scheme
         results = self.index.search(query, top_k=fetch_k, artist_filter=artist)
 
         if not results:
             return RetrievalResult(chunks=[], scores=[])
+
+        # Apply scheme boost
+        if prefer_scheme:
+            results = [
+                (chunk, score + (scheme_boost if chunk.rhyme_scheme == prefer_scheme else 0.0))
+                for chunk, score in results
+            ]
+            results.sort(key=lambda r: r[1], reverse=True)
 
         selected = [results[0]]
         seen_text = {results[0][0].text[:100]}
@@ -61,11 +77,9 @@ class Retriever:
         for chunk, score in results[1:]:
             if len(selected) >= top_k:
                 break
-            # Cheap diversity: no near-identical prefixes
             prefix = chunk.text[:100]
             if prefix in seen_text:
                 continue
-            # Also skip if too similar to already-selected chunks
             is_dup = any(
                 _overlap(chunk.text, sel[0].text) > 0.6
                 for sel in selected

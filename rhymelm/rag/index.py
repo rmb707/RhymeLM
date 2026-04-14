@@ -20,6 +20,10 @@ class VerseChunk:
     title: str
     text: str
     chunk_id: int
+    # Rhyme scheme of the chunk's first 4 lines (AABB / ABAB / ABBA / AAAA / irregular / unknown)
+    rhyme_scheme: str = "unknown"
+    # ARPAbet rhyme suffix per line (None for OOV words)
+    end_suffixes: list = None  # type: ignore[assignment]
 
 
 class VerseIndex:
@@ -100,13 +104,29 @@ class VerseIndex:
         self = cls()
         self._index = faiss.read_index(f"{path}/index.faiss")
         with open(f"{path}/chunks.json") as f:
-            self.chunks = [VerseChunk(**c) for c in json.load(f)]
+            raw = json.load(f)
+        # Tolerate old chunks.json without rhyme_scheme/end_suffixes fields
+        self.chunks = []
+        for c in raw:
+            c.setdefault("rhyme_scheme", "unknown")
+            c.setdefault("end_suffixes", None)
+            self.chunks.append(VerseChunk(**c))
         print(f"Loaded index: {self._index.ntotal} vectors, {len(self.chunks)} chunks")
         return self
 
 
-def _extract_chunks(text: str, artist: str, title: str, min_lines: int = 4, max_lines: int = 16) -> list[VerseChunk]:
-    """Split lyrics into overlapping chunks."""
+def _extract_chunks(
+    text: str,
+    artist: str,
+    title: str,
+    min_lines: int = 4,
+    max_lines: int = 16,
+    cmu=None,
+) -> list[VerseChunk]:
+    """Split lyrics into overlapping chunks, classifying rhyme scheme per chunk."""
+    from rhymelm.data.phonemes import get_rhyme_suffix
+    from rhymelm.rag.schemes import classify_window, get_window_suffixes
+
     lines = [l.strip() for l in text.splitlines() if l.strip()]
     # Drop section headers and garbage
     lines = [l for l in lines if not re.match(r"^\[.*\]$", l) and len(l) >= 3]
@@ -118,11 +138,20 @@ def _extract_chunks(text: str, artist: str, title: str, min_lines: int = 4, max_
     for i in range(0, len(lines), stride):
         window = lines[i : i + max_lines]
         if len(window) >= min_lines:
+            # Classify scheme from the chunk's first 4 lines
+            end_suffixes = None
+            scheme = "unknown"
+            if cmu is not None:
+                end_suffixes = get_window_suffixes(window[:4], cmu, get_rhyme_suffix)
+                scheme = classify_window(end_suffixes)
+
             chunks.append(VerseChunk(
                 artist=artist,
                 title=title,
                 text="\n".join(window),
                 chunk_id=chunk_id,
+                rhyme_scheme=scheme,
+                end_suffixes=end_suffixes,
             ))
             chunk_id += 1
     return chunks
@@ -136,9 +165,13 @@ def build_index_from_csv(
 ) -> VerseIndex:
     """Build a vector index from a CSV file of lyrics."""
     import pandas as pd
+    from rhymelm.data.phonemes import get_cmu_dict
 
     df = pd.read_csv(csv_path)
     print(f"Loaded {len(df)} rows from {csv_path}")
+
+    # Load CMU dict once and reuse across every chunk
+    cmu = get_cmu_dict()
 
     all_chunks = []
     for idx, row in df.iterrows():
@@ -147,16 +180,21 @@ def build_index_from_csv(
             continue
         artist = row.get(artist_col, "Unknown")
         title = row.get(title_col, f"Track {idx}") if title_col else f"Track {idx}"
-        chunks = _extract_chunks(text, artist, title)
+        chunks = _extract_chunks(text, artist, title, cmu=cmu)
         all_chunks.extend(chunks)
 
     print(f"Extracted {len(all_chunks)} verse chunks")
 
-    # Show per-artist counts
+    # Show per-artist counts and scheme distribution
     from collections import Counter
     counts = Counter(c.artist for c in all_chunks)
     for artist, n in counts.most_common():
         print(f"  {artist}: {n} chunks")
+
+    scheme_counts = Counter(c.rhyme_scheme for c in all_chunks)
+    print("\nChunk scheme distribution:")
+    for scheme, n in scheme_counts.most_common():
+        print(f"  {scheme}: {n} ({n/len(all_chunks):.0%})")
 
     idx = VerseIndex()
     idx.add_chunks(all_chunks)
