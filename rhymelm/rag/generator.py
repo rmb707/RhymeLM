@@ -317,7 +317,7 @@ class RAGGenerator:
 
             score = 0.0
             if use_reranking:
-                score = self._score_verse(lines, prefer_scheme)
+                score = self._score_verse(lines, prefer_scheme, num_bars)
             candidate_verses.append((verse_text, lines, score))
 
         if use_reranking:
@@ -355,16 +355,27 @@ class RAGGenerator:
                 break
         return lines
 
-    def _score_verse(self, lines: list[str], scheme: str) -> float:
-        """Score a candidate verse by rhyme density + scheme alignment + length.
+    def _score_verse(self, lines: list[str], scheme: str, target_bars: int) -> float:
+        """Score a candidate verse by absolute rhyme count with a length floor.
 
-        Combines three signals so the best candidate is the one that:
-          - rhymes the most overall (rewards any rhyming pair within 4 bars)
-          - actually matches the target scheme positionally (bonus)
-          - is long enough to be a real verse (penalty for early bail)
+        Earlier version used density ratios, which let short prose blobs win
+        (1 rhyming pair / 1 possible = perfect density). This version uses
+        absolute counts multiplied by a length factor, so longer verses with
+        more rhymes always beat short ones.
+
+        Components:
+          - rhyme_count: absolute number of rhyming pairs within 4 lines
+          - positional_bonus: extra credit when the rhyme lands at scheme positions
+          - length_factor: 0 if under 50% of target, linear up to 1.0 at target
+          - hard floor: verses under 4 lines get score = -1 (disqualified)
         """
         if not lines or scheme in (None, "free"):
             return 0.0
+
+        # Hard floor: verses must be at least 4 bars or half the target
+        min_required = max(4, target_bars // 2)
+        if len(lines) < min_required:
+            return -1.0
 
         from rhymelm.data.phonemes import get_rhyme_suffix
         from rhymelm.rag.schemes import (
@@ -377,22 +388,16 @@ class RAGGenerator:
             word = get_line_ending_word(line)
             suffixes.append(get_rhyme_suffix(word, self._cmu) if word else None)
 
-        # ── Signal 1: any-position rhyme density ──
-        # Reward every pair of lines (within 4 bars of each other) that share a suffix.
-        # This credits the candidate that rhymes the most regardless of strict position.
-        any_pair_hits = 0
-        any_pair_possible = 0
+        # ── Signal 1: absolute rhyme pair count (within 4-line windows) ──
+        rhyme_count = 0
         for i in range(len(suffixes)):
             for j in range(i + 1, min(i + 5, len(suffixes))):
                 if suffixes[i] is None or suffixes[j] is None:
                     continue
-                any_pair_possible += 1
                 if suffixes[i] == suffixes[j]:
-                    any_pair_hits += 1
-        any_density = any_pair_hits / any_pair_possible if any_pair_possible else 0.0
+                    rhyme_count += 1
 
-        # ── Signal 2: positional scheme alignment bonus ──
-        # Extra credit when the rhyme actually lands at the scheme's expected positions.
+        # ── Signal 2: positional scheme alignment ──
         groups = parse_rhyme_scheme(scheme, len(lines))
         from collections import defaultdict
         group_to_suffixes: dict[int, list[str | None]] = defaultdict(list)
@@ -400,7 +405,6 @@ class RAGGenerator:
             group_to_suffixes[grp].append(suf)
 
         positional_hits = 0
-        positional_possible = 0
         for grp_suffixes in group_to_suffixes.values():
             if len(grp_suffixes) < 2:
                 continue
@@ -408,16 +412,19 @@ class RAGGenerator:
             if anchor is None:
                 continue
             for s in grp_suffixes[1:]:
-                positional_possible += 1
                 if s == anchor:
                     positional_hits += 1
-        positional_density = positional_hits / positional_possible if positional_possible else 0.0
 
-        # ── Signal 3: length ──
-        # Penalty for short verses, bonus for hitting the target.
-        length_score = min(len(lines) / 8.0, 1.0)
+        # ── Signal 3: length factor (multiplicative, not additive) ──
+        length_factor = min(len(lines) / target_bars, 1.0)
 
-        # Weighted combination — any-pair density dominates because it gives
-        # the model partial credit, positional bonus rewards hitting the scheme,
-        # length score keeps short verses from winning by accident.
-        return (any_density * 1.0) + (positional_density * 0.5) + (length_score * 0.3)
+        # Also count how many lines had a recognizable ending word — verses
+        # where most endings are None are probably broken prose blobs
+        valid_endings = sum(1 for s in suffixes if s is not None)
+        valid_frac = valid_endings / len(lines)
+        if valid_frac < 0.5:
+            return -0.5  # over half the lines ended in garbage, disqualify
+
+        # Final score: weighted combination scaled by length
+        raw = rhyme_count + 0.5 * positional_hits
+        return raw * length_factor + length_factor * 0.5
