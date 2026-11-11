@@ -64,6 +64,34 @@ The leak gate falsely refused v2 on slang and contractions ("Lookin", "Didn't"),
 which it had read as names. The gate now normalizes those and still holds 355
 private-only proper nouns.
 
-**Next (v2):** more epochs and a higher learning rate. Train fragments as their own
+### Re-sampled scoreboard and judge round 1 (2026-11-11, ~3:10 PM PST)
+
+With the newline-safe sampler, v1 and v2 write full 16-bar verses at about 5 words
+per line (Rob writes 6). Rhyme is still missing. End rhyme is 0.03 and multisyllabic
+rhyme is 0.03, against Rob's 0.20 and 0.28.
+
+**Blind judge panel r1.** Claude Opus 5.5, Codex Sol and Grok 4.7 each ranked all six
+systems on all 30 titles (`reports/judging/r1/results.json`, mean normalized rank,
+0 = best):
+
+| system | originality | craft |
+|---|---|---|
+| codex-gpt-6.1-sol | **0.03** | 0.16 |
+| grok-4.7 | 0.17 | 0.40 |
+| claude-opus-5.5 | 0.40 | **0.04** |
+| rhymelm-v2 | 0.76 | 0.76 |
+| rhymelm-v1 | 0.76 | 0.74 |
+| qwen3-8b-base | 0.88 | 0.90 |
+
+The judges agree about 90% of the time on pairwise orderings. Self-preference is
+negligible: every judge, including Claude, put Codex first on originality, and
+leaving out each judge's own entry changes no ordering. **RhymeLM beats only the
+untuned base so far.** It has Rob's voice but not his rhyme craft.
+
+Caveat: all three judges are LLMs and may share a taste for polished, model-like
+writing. Rob's own blind ratings are the decisive test.
+
+**Next:** stage 2, DPO toward rhyme (in progress). Then DPO with the judge panel
+choosing the preferred verse, so the other models train ours. Train fragments as their own
 `Type: bars` documents but enforce a minimum verse length at generation.
 Then the judge panel, followed by preference tuning toward originality.

@@ -1,0 +1,98 @@
+{
+  "round": "r1",
+  "judges": [
+    "claude-opus-5.5",
+    "codex-gpt-6.1-sol",
+    "grok-4.7"
+  ],
+  "invalid_votes": 0,
+  "mean_rank": {
+    "originality": {
+      "codex-gpt-6.1-sol": 0.031,
+      "grok-4.7": 0.173,
+      "claude-opus-5.5": 0.396,
+      "rhymelm-v2": 0.76,
+      "rhymelm-v1": 0.762,
+      "qwen3-8b-base": 0.878
+    },
+    "craft": {
+      "claude-opus-5.5": 0.042,
+      "codex-gpt-6.1-sol": 0.162,
+      "grok-4.7": 0.396,
+      "rhymelm-v1": 0.74,
+      "rhymelm-v2": 0.764,
+      "qwen3-8b-base": 0.896
+    }
+  },
+  "first_place": {
+    "originality": {
+      "codex-gpt-6.1-sol": 76,
+      "grok-4.7": 14
+    },
+    "craft": {
+      "claude-opus-5.5": 72,
+      "codex-gpt-6.1-sol": 18
+    }
+  },
+  "by_judge": {
+    "claude-opus-5.5": {
+      "originality": {
+        "codex-gpt-6.1-sol": 0.0,
+        "grok-4.7": 0.207,
+        "claude-opus-5.5": 0.393,
+        "rhymelm-v1": 0.76,
+        "rhymelm-v2": 0.707,
+        "qwen3-8b-base": 0.933
+      },
+      "craft": {
+        "claude-opus-5.5": 0.0,
+        "codex-gpt-6.1-sol": 0.2,
+        "grok-4.7": 0.4,
+        "rhymelm-v1": 0.707,
+        "rhymelm-v2": 0.713,
+        "qwen3-8b-base": 0.98
+      }
+    },
+    "codex-gpt-6.1-sol": {
+      "originality": {
+        "codex-gpt-6.1-sol": 0.0,
+        "grok-4.7": 0.207,
+        "claude-opus-5.5": 0.393,
+        "qwen3-8b-base": 0.78,
+        "rhymelm-v2": 0.813,
+        "rhymelm-v1": 0.807
+      },
+      "craft": {
+        "codex-gpt-6.1-sol": 0.1,
+        "claude-opus-5.5": 0.1,
+        "grok-4.7": 0.4,
+        "qwen3-8b-base": 0.827,
+        "rhymelm-v2": 0.807,
+        "rhymelm-v1": 0.767
+      }
+    },
+    "grok-4.7": {
+      "originality": {
+        "codex-gpt-6.1-sol": 0.093,
+        "grok-4.7": 0.107,
+        "claude-opus-5.5": 0.4,
+        "rhymelm-v1": 0.72,
+        "qwen3-8b-base": 0.92,
+        "rhymelm-v2": 0.76
+      },
+      "craft": {
+        "codex-gpt-6.1-sol": 0.187,
+        "grok-4.7": 0.387,
+        "claude-opus-5.5": 0.027,
+        "qwen3-8b-base": 0.88,
+        "rhymelm-v1": 0.747,
+        "rhymelm-v2": 0.773
+      }
+    }
+  },
+  "pairwise_agreement": {
+    "originality": 0.898,
+    "craft": 0.911
+  },
+  "note": "mean_rank: 0 = always best, 1 = always worst. Judges are blind to system names."
+}
