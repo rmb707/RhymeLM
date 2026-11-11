@@ -1,0 +1,82 @@
+# Titles for preference-tuning candidates. Must stay disjoint from eval/prompts.txt
+# and from Rob's song titles (checked by rhymelm.training.dpo_data).
+Late Rent Notice
+Night Bus Window
+Uncle's Garage
+Eviction Letter
+Food Stamps
+Cousin's Wedding
+Laundromat Quarters
+Payday Loan
+County Jail Phone
+Bus Stop Bench
+First Apartment
+Borrowed Car
+Busted Headlight
+Group Home
+Little League Bleachers
+Repo Man
+Graveyard Flowers
+Cash Advance
+Minimum Wage
+Swing Shift
+Night Classes
+Union Hall
+Warehouse Floor
+Dollar Menu
+Thrift Store Jacket
+Overdue Bills
+Pay Phone
+Corner Booth
+Motel Room Key
+Last Paycheck
+Water Shut Off
+Power Bill
+Car Note
+Child Support
+Visiting Hours
+Back Pew
+Prayer Candle
+Old Neighborhood
+Rooftop Smoke
+Fire Escape
+Midnight Diner
+Payroll Error
+Closing Shift
+Forklift
+Delivery Route
+Tow Yard
+Pawn Ticket
+Empty Fridge
+Bad Tooth
+Urgent Care
+Waiting Room
+Lottery Ticket
+Gas Station Coffee
+Freeway Exit
+Rearview Mirror
+Last Exit
+Burned Bridges
+Second Chances
+Clean Slate
+Thirty Days Sober
+Halfway House
+Parole Office
+Job Interview
+Cover Letter
+Background Check
+Hard Hat
+Steel Toes
+Double Shift
+Sunday Dinner
+Family Reunion
+Baby Pictures
+Report Card
+Parent Conference
+School Shoes
+Hand Me Downs
+Garage Sale
+Moving Truck
+New Zip Code
+Old Friends
+Lost Touch

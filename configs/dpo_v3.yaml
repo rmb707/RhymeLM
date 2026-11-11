@@ -1,0 +1,21 @@
+# Stage 2 (v3): DPO on top of the v2 SFT adapter, pairs from v2's own candidates
+# scored by the rhyme-weighted reward in rhymelm/training/dpo_data.py.
+run_name: qwen3-8b-dpo-v3
+base_model: Qwen/Qwen3-8B-Base
+revision: 49e3418fbbbca6ecbdf9608b4d22e5a407081db4
+sft_adapter: checkpoints/qwen3-8b-qlora-r32-e8-20261111T221020Z/adapter
+pairs: data/private/dpo/v2r1/pairs.jsonl
+eval_fraction: 0.1
+
+train:
+  seed: 42
+  beta: 0.1              # KL strength toward the SFT model (keeps Rob's voice)
+  loss_type: [sigmoid]
+  max_length: 512        # prompt + 16-bar verse is ~200 tokens
+  epochs: 2
+  batch_size: 1
+  grad_accum: 8
+  lr: 5.0e-6
+  scheduler: cosine
+  warmup_steps: 3
+  optim: paged_adamw_8bit
