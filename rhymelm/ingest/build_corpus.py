@@ -35,6 +35,9 @@ PII_PATTERNS = [
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b"), "[email]"),
     (re.compile(r"\b\d{2,5}\s+\w+(?:\s\w+)?\s(?:st|street|ave|avenue|rd|road|blvd|dr|drive|ln|lane|ct|court|way)\b\.?", re.I), "[address]"),
     (re.compile(r"https?://\S+|www\.\S+"), ""),
+    # account / order / tracking numbers: 6+ digit runs, or mixed IDs like AB12C0000001
+    (re.compile(r"\b\d{6,}\b"), "[number]"),
+    (re.compile(r"\b(?=[A-Za-z0-9]*\d[A-Za-z0-9]*\d[A-Za-z0-9]*\d[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{8,}\b"), "[id]"),
 ]
 
 

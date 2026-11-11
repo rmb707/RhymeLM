@@ -20,10 +20,10 @@ train:
   packing: true
   epochs: 3
   batch_size: 1
-  grad_accum: 16
+  grad_accum: 8          # ~17 optimizer steps/epoch on the ~140k-token corpus
   lr: 1.0e-4
   scheduler: cosine
-  warmup_steps: 10
+  warmup_steps: 5
   weight_decay: 0.0
   neftune_noise_alpha: 5
   optim: paged_adamw_8bit

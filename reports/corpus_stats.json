@@ -1,0 +1,39 @@
+{
+  "notes_total": 971,
+  "labels": {
+    "not_lyrics": 409,
+    "poetry_prose": 30,
+    "rob_fragment": 176,
+    "rob_lyrics": 356
+  },
+  "redactions": 39,
+  "transcripts_usable": 16,
+  "transcripts_collab_excluded": 2,
+  "docs_before_dedup": 528,
+  "near_duplicates_dropped": 26,
+  "splits": {
+    "train": {
+      "docs": 444,
+      "words": 100746,
+      "lines": 15300
+    },
+    "val": {
+      "docs": 34,
+      "words": 8157,
+      "lines": 1241
+    },
+    "test": {
+      "docs": 24,
+      "words": 5039,
+      "lines": 764
+    }
+  },
+  "by_source": {
+    "note": 491,
+    "voice_memo": 11
+  },
+  "by_kind": {
+    "lyrics": 348,
+    "fragment": 154
+  }
+}
