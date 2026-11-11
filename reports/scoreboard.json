@@ -2,7 +2,7 @@
   "systems": {
     "claude-opus-5.5": {
       "cliche_4gram": 0.0058,
-      "cross_model_sim": 0.0018,
+      "cross_model_sim": 0.0019,
       "end_rhyme": 0.3042,
       "multi_rhyme": 0.1896,
       "lines": 16.0,
@@ -38,7 +38,7 @@
     },
     "qwen3-8b-base": {
       "cliche_4gram": 0.0091,
-      "cross_model_sim": 0.0012,
+      "cross_model_sim": 0.0015,
       "end_rhyme": 0.0278,
       "multi_rhyme": 0.047,
       "lines": 15.2667,
@@ -50,7 +50,7 @@
     },
     "rhymelm-v1": {
       "cliche_4gram": 0.0252,
-      "cross_model_sim": 0.0022,
+      "cross_model_sim": 0.0005,
       "end_rhyme": 0.0271,
       "multi_rhyme": 0.0312,
       "lines": 15.9667,
@@ -62,7 +62,7 @@
     },
     "rhymelm-v2": {
       "cliche_4gram": 0.0272,
-      "cross_model_sim": 0.0029,
+      "cross_model_sim": 0.0009,
       "end_rhyme": 0.0319,
       "multi_rhyme": 0.0294,
       "lines": 15.6667,
@@ -70,6 +70,18 @@
       "copy_span_max": 0,
       "distinct_2": 0.8492,
       "distinct_3": 0.9867,
+      "samples": 30
+    },
+    "rhymelm-v3-dpo": {
+      "cliche_4gram": 0.0261,
+      "cross_model_sim": 0.0007,
+      "end_rhyme": 0.0415,
+      "multi_rhyme": 0.0299,
+      "lines": 15.6333,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.8811,
+      "distinct_3": 0.9923,
       "samples": 30
     }
   },

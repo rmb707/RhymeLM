@@ -110,6 +110,11 @@ def rhyme_rates(text: str, cmu: dict) -> tuple[float, float]:
     return end / len(lines), multi / len(lines)
 
 
+def family(system: str) -> str:
+    """'rhymelm-v3-dpo' -> 'rhymelm'; every other system is its own family."""
+    return "rhymelm" if system.startswith("rhymelm") else system
+
+
 def jaccard(a: set, b: set) -> float:
     return len(a & b) / len(a | b) if a and b else 0.0
 
@@ -137,7 +142,9 @@ def score(sample_files: list[str], public_csv: str | None, private_path: str | N
         g4 = ngrams(ws, 4)
         m = per_sys[s["system"]]
         m["cliche_4gram"].append(sum(g in public for g in g4) / len(g4) if g4 and public else 0.0)
-        others = [v for k, v in by_prompt[s["prompt"]].items() if k != s["system"]]
+        # compare against OTHER model families only: rhymelm-v2 vs rhymelm-v3 being
+        # alike is expected and says nothing about originality vs other models
+        others = [v for k, v in by_prompt[s["prompt"]].items() if family(k) != family(s["system"])]
         mine = by_prompt[s["prompt"]][s["system"]]
         m["cross_model_sim"].append(max((jaccard(mine, o) for o in others), default=0.0))
         e, mu = rhyme_rates(s["text"], cmu)
