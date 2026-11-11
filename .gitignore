@@ -16,3 +16,10 @@ rhymelm/data/lyrics_cache/
 CLAUDE.md
 /tmp/
 *.log
+
+# Private training data (Rob's lyrics) — never committed
+data/private/
+data/corpus/
+*.private.*
+.venv/
+.cache/
