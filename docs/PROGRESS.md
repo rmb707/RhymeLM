@@ -46,6 +46,24 @@ Validation loss fell from 3.66 to 3.56 to 3.55 and was still falling, so the mod
 Kimi K3.1 baseline is missing: the hub route hit a rate limit and the direct
 instance returned empty runs. It will be added when capacity returns.
 
+### v2 training and a sampling bug (2026-11-11, afternoon PST)
+
+v2 (r32, lr 2e-4, 8 epochs) validation loss by epoch: 3.54, 3.46, **3.455**, 3.54,
+3.73, 3.94, 4.14. It overfits after epoch 3 on ~140k tokens. The kept adapter is
+the epoch-3 checkpoint, which beats v1 (3.55). The first attempt stopped silently
+after epoch 2. It was resumed from `checkpoint-32` with `--resume`.
+
+v2 samples exposed a **sampler bug**. HF's repetition penalty also penalizes the
+newline token. Each line break made the next less likely, and lines ran on to 30
+to 80 words. That, not the model, is why v1, v2 and the base model wrote 12 to 13
+word lines against Rob's 6, and why their end-rhyme scores were low. Fixed with
+`LyricRepetitionPenalty`, which exempts newline tokens. Base, v1 and v2 are being
+re-sampled, and the v1 row above is superseded.
+
+The leak gate falsely refused v2 on slang and contractions ("Lookin", "Didn't"),
+which it had read as names. The gate now normalizes those and still holds 355
+private-only proper nouns.
+
 **Next (v2):** more epochs and a higher learning rate. Train fragments as their own
 `Type: bars` documents but enforce a minimum verse length at generation.
 Then the judge panel, followed by preference tuning toward originality.

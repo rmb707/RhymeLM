@@ -55,6 +55,29 @@ def main() -> None:
     from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                               StoppingCriteria, StoppingCriteriaList, set_seed)
 
+    from transformers import LogitsProcessor, LogitsProcessorList
+
+    class LyricRepetitionPenalty(LogitsProcessor):
+        """HF-style repetition penalty that never penalizes line breaks.
+
+        The stock penalty treats '\\n' like any reused token, so every line break
+        makes the next one less likely and lines run on (v1/v2 wrote 30-80 word
+        'bars'). Bars ARE repeated newlines, so those tokens are exempt.
+        """
+        def __init__(self, penalty: float, exempt_ids: list[int]):
+            self.penalty = penalty
+            self.exempt = torch.tensor(sorted(set(exempt_ids)), dtype=torch.long)
+
+        def __call__(self, input_ids, scores):
+            if self.penalty == 1.0:
+                return scores
+            score = torch.gather(scores, 1, input_ids)
+            score = torch.where(score < 0, score * self.penalty, score / self.penalty)
+            penalized = scores.scatter(1, input_ids, score)
+            ex = self.exempt.to(scores.device)
+            penalized[:, ex] = scores[:, ex]
+            return penalized
+
     class LineStop(StoppingCriteria):
         """Stop once the generated text holds `bars` non-empty lines."""
         def __init__(self, tokenizer, prompt_len: int, bars: int):
@@ -81,6 +104,11 @@ def main() -> None:
         model = PeftModel.from_pretrained(model, args.adapter)
     model.eval()
 
+    # every vocab token that contains a newline (e.g. "\n", "\n\n", ".\n")
+    newline_ids = [i for t, i in tok.get_vocab().items()
+                   if "\n" in tok.convert_tokens_to_string([t])]
+    rep = LyricRepetitionPenalty(args.repetition_penalty, newline_ids)
+
     out = Path(args.out_dir) / f"{args.system}.jsonl"
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as f:
@@ -97,7 +125,7 @@ def main() -> None:
                     do_sample=True,
                     temperature=args.temperature,
                     top_p=args.top_p,
-                    repetition_penalty=args.repetition_penalty,
+                    logits_processor=LogitsProcessorList([rep]),
                     pad_token_id=tok.pad_token_id or tok.eos_token_id,
                 )
             text = tok.decode(gen[0, ids["input_ids"].shape[1]:], skip_special_tokens=True)

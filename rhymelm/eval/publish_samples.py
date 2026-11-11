@@ -24,7 +24,17 @@ from pathlib import Path
 
 from rhymelm.eval.uniqueness import longest_copy_span, ngrams, words
 
-CAP = re.compile(r"\b[A-Z][a-z]{2,}\b")
+# Capitalized word incl. apostrophes, so "Didn't" stays whole instead of "Didn"
+CAP = re.compile(r"\b[A-Z][a-z]{2,}(?:'[a-z]+)?\b")
+
+
+def _known(word: str, vocab: set[str]) -> bool:
+    """Common/public word, allowing slang spellings and inflections."""
+    w = word.lower()
+    cands = {w, w.split("'")[0], w.rstrip("s"), w[:-2] if w.endswith("es") else w,
+             w + "g" if w.endswith("in") else w,             # lookin -> looking
+             w.replace("in'", "ing")}
+    return any(c in vocab for c in cands)
 
 
 def private_names(corpus_dir: Path, public_csv: str) -> set[str]:
@@ -39,7 +49,8 @@ def private_names(corpus_dir: Path, public_csv: str) -> set[str]:
     for f in corpus_dir.glob("*.jsonl"):
         for line in open(f, encoding="utf-8"):
             caps.update(CAP.findall(json.loads(line)["text"]))
-    return {w for w in caps if w.lower() not in common and w.lower() not in pub_words}
+    vocab = common | pub_words
+    return {w for w in caps if not _known(w, vocab)}
 
 
 def check(samples_path: Path, corpus_dir: Path, public_csv: str, leak_span: int) -> list[str]:
