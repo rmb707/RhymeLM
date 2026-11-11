@@ -1,0 +1,16 @@
+{
+  "name": "v2r1",
+  "adapter": "checkpoints/qwen3-8b-qlora-r32-e8-20261111T221020Z/adapter",
+  "titles": 80,
+  "k": 8,
+  "candidates": 640,
+  "valid": 585,
+  "disqualified": {
+    "line_shape": 20,
+    "short": 35
+  },
+  "reward_mean_valid": 0.0047,
+  "pairs": 147,
+  "chosen_mean": 0.0999,
+  "rejected_mean": -0.4086
+}
