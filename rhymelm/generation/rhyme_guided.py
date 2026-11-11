@@ -65,7 +65,9 @@ def main() -> None:
     ap.add_argument("--prompts", default="eval/prompts.txt")
     ap.add_argument("--out-dir", default="data/private/samples")
     ap.add_argument("--bars", type=int, default=16)
-    ap.add_argument("--m", type=int, default=8, help="candidates per line")
+    ap.add_argument("--m", type=int, default=8, help="candidates per opening line")
+    ap.add_argument("--m-answer", type=int, default=32,
+                    help="candidates for lines that must rhyme (rhymes are rare, so cast wider)")
     ap.add_argument("--scheme", default="AABB", choices=sorted(SCHEMES))
     ap.add_argument("--temperature", type=float, default=0.95)
     ap.add_argument("--top-p", type=float, default=0.95)
@@ -111,12 +113,12 @@ def main() -> None:
             return torch.tensor([int(gen[r, -1]) in newline_ids for r in range(gen.shape[0])],
                                 dtype=torch.bool, device=input_ids.device)
 
-    def candidates(context: str) -> list[tuple[str, float]]:
+    def candidates(context: str, m: int) -> list[tuple[str, float]]:
         ids = tok(context, return_tensors="pt").to(model.device)
         n = ids["input_ids"].shape[1]
         with torch.no_grad():
             out = model.generate(
-                **ids, do_sample=True, num_return_sequences=args.m, max_new_tokens=32,
+                **ids, do_sample=True, num_return_sequences=m, max_new_tokens=32,
                 temperature=args.temperature, top_p=args.top_p,
                 logits_processor=LogitsProcessorList([rep]),
                 stopping_criteria=StoppingCriteriaList([EachLineStop(n)]),
@@ -145,9 +147,9 @@ def main() -> None:
             keys: list[tuple] = []
             hows = []
             for i in range(args.bars):
-                cands = candidates(context)
                 j = rule(i)
                 target = keys[j] if j is not None and j < len(keys) else None
+                cands = candidates(context, args.m_answer if target else args.m)
                 line, how = pick(cands, target, cmu)
                 if not line:
                     break
@@ -160,7 +162,8 @@ def main() -> None:
                 totals[h] += 1
             f.write(json.dumps({"system": args.system, "prompt": title, "text": "\n".join(lines),
                                 "params": {"decoder": "rhyme_guided", "scheme": args.scheme,
-                                           "m": args.m, "temperature": args.temperature,
+                                           "m": args.m, "m_answer": args.m_answer,
+                                           "temperature": args.temperature,
                                            "seed": args.seed},
                                 "picks": hows}, ensure_ascii=False) + "\n")
             f.flush()
