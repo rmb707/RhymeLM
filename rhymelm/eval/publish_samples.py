@@ -45,12 +45,26 @@ def private_names(corpus_dir: Path, public_csv: str) -> set[str]:
     common = {w.lower() for w in nltk_words.words()}
     pub = " ".join(pd.read_csv(public_csv)["artist_verses"].dropna().astype(str)).lower()
     pub_words = set(re.findall(r"[a-z']+", pub))
+    # A name stays capitalized mid-line ("me and Jay"); slang is only capitalized
+    # because it starts a line ("Boutta ...") and shows up lowercase elsewhere.
     caps: Counter[str] = Counter()
+    cap_mid: Counter[str] = Counter()
+    lower: Counter[str] = Counter()
     for f in corpus_dir.glob("*.jsonl"):
-        for line in open(f, encoding="utf-8"):
-            caps.update(CAP.findall(json.loads(line)["text"]))
+        for doc in open(f, encoding="utf-8"):
+            for ln in json.loads(doc)["text"].splitlines():
+                toks = re.findall(r"[A-Za-z][A-Za-z']*", ln)
+                for i, t in enumerate(toks):
+                    if CAP.fullmatch(t):
+                        caps[t] += 1
+                        if i > 0:
+                            cap_mid[t] += 1
+                    elif t.islower():
+                        lower[t.capitalize()] += 1
     vocab = common | pub_words
-    return {w for w in caps if not _known(w, vocab)}
+    # Conservative: anything Rob never writes in lowercase stays gated, even if it
+    # only ever opens a line (a name can do that too). cap_mid is kept for reports.
+    return {w for w in caps if not _known(w, vocab) and lower[w] == 0}
 
 
 def check(samples_path: Path, corpus_dir: Path, public_csv: str, leak_span: int) -> list[str]:
