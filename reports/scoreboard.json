@@ -1,0 +1,75 @@
+{
+  "systems": {
+    "claude-opus-5.5": {
+      "cliche_4gram": 0.0058,
+      "cross_model_sim": 0.0018,
+      "end_rhyme": 0.3042,
+      "multi_rhyme": 0.1896,
+      "lines": 16.0,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.8525,
+      "distinct_3": 0.9899,
+      "samples": 30
+    },
+    "codex-gpt-6.1-sol": {
+      "cliche_4gram": 0.0038,
+      "cross_model_sim": 0.0016,
+      "end_rhyme": 0.1375,
+      "multi_rhyme": 0.1646,
+      "lines": 16.0,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.8779,
+      "distinct_3": 0.9904,
+      "samples": 30
+    },
+    "grok-4.7": {
+      "cliche_4gram": 0.0014,
+      "cross_model_sim": 0.0009,
+      "end_rhyme": 0.4104,
+      "multi_rhyme": 0.1292,
+      "lines": 16.0,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.8577,
+      "distinct_3": 0.9891,
+      "samples": 30
+    },
+    "qwen3-8b-base": {
+      "cliche_4gram": 0.0092,
+      "cross_model_sim": 0.0007,
+      "end_rhyme": 0.0336,
+      "multi_rhyme": 0.0343,
+      "lines": 8.4,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.9391,
+      "distinct_3": 0.9972,
+      "samples": 30
+    },
+    "rhymelm-v1": {
+      "cliche_4gram": 0.0137,
+      "cross_model_sim": 0.0006,
+      "end_rhyme": 0.0757,
+      "multi_rhyme": 0.046,
+      "lines": 9.1,
+      "copy_8gram": 0.0,
+      "copy_span_max": 0,
+      "distinct_2": 0.8735,
+      "distinct_3": 0.993,
+      "samples": 30
+    }
+  },
+  "leaks": [],
+  "prompts": 30,
+  "reference": {
+    "cliche_4gram": 0.0176,
+    "end_rhyme": 0.2021,
+    "multi_rhyme": 0.2807,
+    "distinct_3": 0.9475,
+    "words_per_line_median": 6,
+    "docs": 15,
+    "name": "rob-heldout"
+  }
+}

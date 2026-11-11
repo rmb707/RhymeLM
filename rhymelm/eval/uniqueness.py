@@ -167,6 +167,35 @@ def score(sample_files: list[str], public_csv: str | None, private_path: str | N
     return {"systems": table, "leaks": leaks, "prompts": len(by_prompt)}
 
 
+def reference_row(path: str, public_csv: str | None) -> dict:
+    """Aggregate metrics for a corpus (e.g. Rob's held-out songs). No text is stored."""
+    import nltk
+    nltk.download("cmudict", quiet=True)
+    from nltk.corpus import cmudict
+    cmu = cmudict.dict()
+    public = load_public_4grams(public_csv) if public_csv else set()
+    docs = [json.loads(l) for l in open(path, encoding="utf-8")]
+    docs = [d for d in docs if d.get("kind", "lyrics") == "lyrics"]
+    m: dict[str, list[float]] = defaultdict(list)
+    allw = []
+    for d in docs:
+        ws = words(d["text"])
+        g4 = ngrams(ws, 4)
+        m["cliche_4gram"].append(sum(g in public for g in g4) / len(g4) if g4 and public else 0.0)
+        e, mu = rhyme_rates(d["text"], cmu)
+        m["end_rhyme"].append(e)
+        m["multi_rhyme"].append(mu)
+        allw.append(ws)
+    row = {k: round(sum(v) / len(v), 4) for k, v in m.items() if v}
+    grams = [g for ws in allw for g in ngrams(ws, 3)]
+    row["distinct_3"] = round(len(set(grams)) / len(grams), 4) if grams else 0.0
+    lines = [len(l.split()) for d in docs for l in d["text"].splitlines() if l.strip()]
+    row["words_per_line_median"] = sorted(lines)[len(lines) // 2] if lines else 0
+    row["docs"] = len(docs)
+    row["name"] = Path(path).stem
+    return row
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("samples", nargs="+")
@@ -174,10 +203,16 @@ def main() -> None:
     ap.add_argument("--private-corpus", default=None)
     ap.add_argument("--leak-span", type=int, default=8)
     ap.add_argument("--out", default="reports/scoreboard.json")
+    ap.add_argument("--reference", default=None,
+                    help="private corpus jsonl scored as an aggregate target row (numbers only)")
+    ap.add_argument("--reference-name", default="rob-heldout")
     args = ap.parse_args()
 
     files = [f for pat in args.samples for f in glob.glob(pat)]
     res = score(files, args.public_corpus, args.private_corpus, args.leak_span)
+    if args.reference:
+        res["reference"] = reference_row(args.reference, args.public_corpus)
+        res["reference"]["name"] = args.reference_name
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
 
@@ -185,6 +220,9 @@ def main() -> None:
     print(f"{'system':28}" + "".join(f"{c:>16}" for c in cols))
     for name, row in sorted(res["systems"].items(), key=lambda kv: kv[1].get("cliche_4gram", 1)):
         print(f"{name:28}" + "".join(f"{row.get(c, '-'):>16}" for c in cols))
+    if res.get("reference"):
+        ref = res["reference"]
+        print(f"{'(target) ' + ref['name']:28}" + "".join(f"{ref.get(c, '-'):>16}" for c in cols))
     if res["leaks"]:
         print(f"\nLEAKS (copy span >= {args.leak_span} words; never commit these): {len(res['leaks'])}")
 
