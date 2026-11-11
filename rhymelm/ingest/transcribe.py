@@ -51,9 +51,33 @@ def load_model(name: str, device: str):
     return WhisperModel(name, device=device, compute_type=compute), device
 
 
+def decode_audio(path: str, sr: int = 16000):
+    """Decode any audio to mono float32 at ``sr`` via the ffmpeg CLI.
+
+    Avoids faster-whisper's PyAV path, whose API drifts between av releases.
+    """
+    import subprocess
+    import numpy as np
+    raw = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-f", "s16le",
+         "-ac", "1", "-ar", str(sr), "-"],
+        check=True, capture_output=True,
+    ).stdout
+    return np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
+
+
+def file_sha(path: str) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def transcribe_file(model, path: str) -> dict:
     segments, info = model.transcribe(
-        path,
+        decode_audio(path),
         language="en",
         beam_size=5,
         vad_filter=True,
@@ -100,25 +124,42 @@ def main() -> None:
         for a in r["audio"]:
             audio_to_notes.setdefault(a, []).append(r["id"])
 
+    # Same memo is often attached to several notes under different IDs:
+    # transcribe each distinct file content once.
+    by_sha: dict[str, dict] = {}
+    for path, ids in sorted(audio_to_notes.items()):
+        e = by_sha.setdefault(file_sha(path), {"audio_path": path, "note_ids": [], "copies": 0})
+        e["note_ids"] = sorted(set(e["note_ids"]) | set(ids))
+        e["copies"] += 1
+
     out = Path(args.out)
     done = set()
-    if out.exists():  # resume
-        done = {json.loads(l)["audio_path"] for l in open(out, encoding="utf-8")}
+    if out.exists():  # resume; failed records are retried
+        for l in open(out, encoding="utf-8"):
+            r = json.loads(l)
+            if not r.get("error"):
+                done.add(r["sha256"])
 
     model, device = load_model(args.model, args.device)
-    print(f"model={args.model} device={device} files={len(audio_to_notes)} already_done={len(done)}")
-    with out.open("a", encoding="utf-8") as f:
-        for i, (path, ids) in enumerate(sorted(audio_to_notes.items()), 1):
-            if path in done:
+    print(f"model={args.model} device={device} unique_files={len(by_sha)} already_done={len(done)}")
+    kept = [json.loads(l) for l in open(out, encoding="utf-8")] if out.exists() else []
+    kept = [r for r in kept if not r.get("error")]
+    with out.open("w", encoding="utf-8") as f:
+        for r in kept:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+        for i, (sha, e) in enumerate(by_sha.items(), 1):
+            if sha in done:
                 continue
-            rec = {"audio_path": path, "note_ids": ids, "file": Path(path).name}
+            path, ids = e["audio_path"], e["note_ids"]
+            rec = {"sha256": sha, "audio_path": path, "note_ids": ids,
+                   "copies": e["copies"], "file": Path(path).name}
             try:
                 rec.update(transcribe_file(model, path))
             except Exception as e:  # keep going; record the failure
                 rec.update({"error": f"{type(e).__name__}: {e}", "usable": False})
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             f.flush()
-            print(f"[{i}/{len(audio_to_notes)}] words={rec.get('words', 0)} "
+            print(f"[{i}/{len(by_sha)}] words={rec.get('words', 0)} "
                   f"wpm={rec.get('wpm', 0)} usable={rec.get('usable')}")
 
 

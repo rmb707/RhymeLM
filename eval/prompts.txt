@@ -1,0 +1,32 @@
+# Fixed public eval prompts: one song title per line. Every system answers all of them.
+# Never edit in place; add a new file (prompts_v2.txt) so scores stay comparable.
+Rent Due
+Graveyard Shift
+Brother's Keeper
+Mom's Kitchen
+Cold Case
+Paper Trail
+Overtime
+Stepdad
+Last Bus Home
+Ankle Monitor
+First Check
+Hospital Hallway
+Pawn Shop
+Glass House
+Bad Credit
+Sunday Service
+Corner Store
+Old Phone Numbers
+Daughter's Birthday
+Foster Care
+Early Shift Again
+Empty Lot
+Parking Lot Prayers
+Fake Friends Real Problems
+Two Jobs
+Grandma's House
+Funeral Suit
+Three AM Ceiling
+Moving Out
+Started From Nothing
