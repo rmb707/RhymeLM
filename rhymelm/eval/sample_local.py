@@ -48,10 +48,22 @@ def main() -> None:
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--repetition-penalty", type=float, default=1.1)
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--min-tokens", type=int, default=None, help="default: 5 x bars")
     args = ap.parse_args()
 
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, set_seed
+    from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                              StoppingCriteria, StoppingCriteriaList, set_seed)
+
+    class LineStop(StoppingCriteria):
+        """Stop once the generated text holds `bars` non-empty lines."""
+        def __init__(self, tokenizer, prompt_len: int, bars: int):
+            self.tok, self.prompt_len, self.bars = tokenizer, prompt_len, bars
+
+        def __call__(self, input_ids, scores, **kwargs):
+            text = self.tok.decode(input_ids[0, self.prompt_len:], skip_special_tokens=True)
+            done = sum(1 for l in text.split("\n")[:-1] if l.strip()) >= self.bars
+            return torch.tensor([done], device=input_ids.device)
 
     set_seed(args.seed)
     tok = AutoTokenizer.from_pretrained(args.base_model, revision=args.revision)
@@ -78,6 +90,10 @@ def main() -> None:
                 gen = model.generate(
                     **ids,
                     max_new_tokens=args.bars * 24,
+                    # No EOS before ~half a verse (~8 tokens per half-bar line):
+                    # short fragments in training otherwise teach 1-line answers.
+                    min_new_tokens=args.min_tokens if args.min_tokens is not None else args.bars * 5,
+                    stopping_criteria=StoppingCriteriaList([LineStop(tok, ids["input_ids"].shape[1], args.bars)]),
                     do_sample=True,
                     temperature=args.temperature,
                     top_p=args.top_p,

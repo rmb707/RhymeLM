@@ -44,6 +44,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--config", required=True)
     ap.add_argument("--max-steps", type=int, default=None, help="override for smoke tests")
+    ap.add_argument("--resume", default=None,
+                    help="checkpoints/<run>/checkpoint-N to continue an interrupted run")
     args = ap.parse_args()
     cfg = yaml.safe_load(open(args.config, encoding="utf-8"))
 
@@ -55,8 +57,12 @@ def main() -> None:
 
     t = cfg["train"]
     set_seed(t["seed"])
-    run = cfg["run_name"] + time.strftime("-%Y%m%dT%H%M%SZ", time.gmtime())
-    ckpt_dir = Path("checkpoints") / run
+    if args.resume:
+        ckpt_dir = Path(args.resume).parent  # keep the interrupted run's directory and name
+        run = ckpt_dir.name
+    else:
+        run = cfg["run_name"] + time.strftime("-%Y%m%dT%H%M%SZ", time.gmtime())
+        ckpt_dir = Path("checkpoints") / run
     report_dir = Path("reports/runs") / run
     report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -130,7 +136,7 @@ def main() -> None:
     )
 
     t0 = time.time()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume)
     elapsed = time.time() - t0
     final_eval = trainer.evaluate() if len(val_ds) else {}
 

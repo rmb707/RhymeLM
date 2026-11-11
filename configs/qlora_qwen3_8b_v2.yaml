@@ -1,0 +1,29 @@
+# Stage 1 v2: QLoRA (longer, higher LR; v1 was undertrained) on Qwen3-8B-Base (Apache-2.0) — fits a 12 GB RTX 3080 Ti.
+# Small personal corpus (~10^5 words): conservative LR, NEFTune, per-epoch eval,
+# best checkpoint by val loss. Memorization is checked separately in eval.
+run_name: qwen3-8b-qlora-r32-e8
+base_model: Qwen/Qwen3-8B-Base
+revision: 49e3418fbbbca6ecbdf9608b4d22e5a407081db4   # HF commit, pinned 2026-11-11
+corpus_dir: data/private/corpus
+attn_implementation: sdpa
+
+lora:
+  r: 32
+  alpha: 64
+  dropout: 0.05
+  rslora: false
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+train:
+  seed: 42
+  max_length: 1024
+  packing: true
+  epochs: 8
+  batch_size: 1
+  grad_accum: 8          # ~17 optimizer steps/epoch on the ~140k-token corpus
+  lr: 2.0e-4
+  scheduler: cosine
+  warmup_steps: 5
+  weight_decay: 0.0
+  neftune_noise_alpha: 5
+  optim: paged_adamw_8bit
