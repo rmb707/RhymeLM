@@ -91,7 +91,33 @@ untuned base so far.** It has Rob's voice but not his rhyme craft.
 Caveat: all three judges are LLMs and may share a taste for polished, model-like
 writing. Rob's own blind ratings are the decisive test.
 
-**Next:** stage 2, DPO toward rhyme (in progress). Then DPO with the judge panel
-choosing the preferred verse, so the other models train ours. Train fragments as their own
+### Stage 2: DPO v3 and rhyme-guided decoding (2026-11-11, 3:30–5:00 PM PST)
+
+- **v3 = DPO on v2.** It used 147 pairs from v2's own candidates, scored by a rhyme
+  reward. On that reward Rob's held-out lyrics score 0.31 and v2 scores -0.03. On
+  training pairs v3 prefers the chosen verse 94–100% of the time; on held-out pairs
+  it is at chance. End rhyme on the eval titles rose from 0.032 to 0.041; the gain
+  is small.
+- **Rhyme-guided decoding** (`rhymelm/generation/rhyme_guided.py`) writes one bar at
+  a time. It samples line candidates and keeps the one that rhymes with the line it
+  answers (AABB), preferring two-vowel rhymes. No token is forced.
+
+| v3 decoding | candidates per rhyming line | rhyming lines landed | end rhyme | multisyllabic rhyme |
+|---|---|---|---|---|
+| plain sampling | n/a | n/a | 0.041 | 0.030 |
+| guided | 8 | 40 / 240 | 0.077 | 0.088 |
+| **guided** | **32** | **107 / 240** | **0.158** | **0.188** |
+| *Rob's held-out lyrics (target)* | | | *0.202* | *0.281* |
+
+Multisyllabic rhyme now ties Claude Opus 5.5 (0.190) and beats Codex Sol (0.165) and
+Grok 4.7 (0.129), while keeping the lowest cross-model similarity. The samples read
+coherently, but the rhymes are simple and cluster in the first bars.
+
+**Next:**
+1. Use guided-32 verses on the 80 DPO titles as "chosen" and plain samples as
+   "rejected" (expert iteration). This trains the rhyming into the weights so plain
+   sampling improves too.
+2. Judge round 2 with the guided outputs.
+3. Judge-in-the-loop preference data. Rob's blind rating is still pending. Train fragments as their own
 `Type: bars` documents but enforce a minimum verse length at generation.
 Then the judge panel, followed by preference tuning toward originality.
